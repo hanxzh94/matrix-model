@@ -1,6 +1,6 @@
 import tensorflow as tf
 import numpy as np 
-from obs import overlap
+from obs import *
 from train import *
 from algebra import *
 from wavefunc import *
@@ -147,11 +147,13 @@ def matrix_entanglement(scope, wavefunc, restore_path, n=2, num_samples=1000):
 
 if __name__ == "__main__":
     num_fermions = 0
-    N = 8
+    N = 4
     for m in [8.0]:
         tf.reset_default_graph()
         print("m =", m)
         # spec
+        batch_size = 1000
+        num_steps = 4000
         rank = 2 * num_fermions
         num_layers = 1
         scope = "nf" + "N" + str(N) + "f0r1demo"
@@ -159,14 +161,78 @@ if __name__ == "__main__":
         algebra = SU(N)
         # build the model
         with tf.variable_scope(scope):
+            # read the spin matrices
+            with open("data/SpinMatrices" + str(N) + ".bin", "rb") as f:
+                mats = tf.constant(np.reshape(np.fromfile(f, dtype=np.dtype("complex64"), count=3*N*N), [3, N, N]))
+            Sx, Sy, Sz = mats[0], mats[1], mats[2]
+            offset = m * tf.stack([-Sz, -Sy, -Sx])
+            vectorizer = Vectorizer(algebra, tfp.bijectors.Exp())
+            offset = vectorizer.encode(tf.expand_dims(offset, 0))[0]
+            # construct wavefunction
             bosonic_dim = 2 * algebra.dim
             fermionic_dim = 2 * algebra.dim
-            bosonic_wavefunc = NormalizingFlow([Normal()] * bosonic_dim, 0, tfp.bijectors.Sigmoid())
-            vectorizer = Vectorizer(algebra, tfp.bijectors.Exp())
+            bosonic_wavefunc = NormalizingFlow([Normal()] * bosonic_dim, 0, tfp.bijectors.Sigmoid(), offset=offset)
             fermionic_wavefunc = FermionicWavefunction(algebra, bosonic_dim, 2, num_fermions, rank, fermionic_dim, num_layers)
-            wavefunc = Wavefunction(algebra, vectorizer, bosonic_wavefunc, fermionic_wavefunc, m)
+            wavefunc = Wavefunction(algebra, vectorizer, bosonic_wavefunc, fermionic_wavefunc)
+            wavefunc.offset = m * tf.stack([-Sz, -Sy, -Sx])
+            bosonic = wavefunc.sample(batch_size)
+            log_norm, _ = wavefunc(bosonic)
+        # observables
+        radius = tf.sqrt(matrix_quadratic_potential(bosonic) / N)
+        gauge = matrix_SUN_adjoint_casimir(wavefunc, bosonic)
+        rotation = miniBMN_SO3_casimir(wavefunc, bosonic)
+        energy = miniBMN_energy(m, wavefunc, bosonic)
+        # training
+        print("Training ...")
+        output_path = "results/" + name + "/"
+        obs = minimize(scope, log_norm, energy, num_steps,
+                        {"r": radius, "gauge": gauge, "rotation": rotation}, 
+                        lr=1e-2, output_path=output_path)
+        obs = minimize(scope, log_norm, energy, num_steps,
+                        {"r": radius, "gauge": gauge, "rotation": rotation}, 
+                        lr=1e-3, restore_path=output_path, output_path=output_path)
+        obs = minimize(scope, log_norm, energy, num_steps,
+                        {"r": radius, "gauge": gauge, "rotation": rotation}, 
+                        lr=1e-4, restore_path=output_path, output_path=output_path)
+        obs = minimize(scope, log_norm, energy, num_steps,
+                        {"r": radius, "gauge": gauge, "rotation": rotation}, 
+                        lr=1e-5, restore_path=output_path, output_path=output_path)
+    for m in [8.0]:
+        tf.reset_default_graph()
+        print("m =", m)
+        # spec
+        batch_size = 1000
+        num_steps = 4000
+        rank = 2 * num_fermions
+        num_layers = 1
+        scope = "nf" + "N" + str(N) + "f0r1demo"
+        name = "nf" + "N" + str(N) + "m" + str(m) + "f0r1demo"
+        algebra = SU(N)
+        # build the model
+        with tf.variable_scope(scope):
+            # read the spin matrices
+            with open("data/SpinMatrices" + str(N) + ".bin", "rb") as f:
+                mats = tf.constant(np.reshape(np.fromfile(f, dtype=np.dtype("complex64"), count=3*N*N), [3, N, N]))
+            Sx, Sy, Sz = mats[0], mats[1], mats[2]
+            offset = m * tf.stack([-Sz, -Sy, -Sx])
+            vectorizer = Vectorizer(algebra, tfp.bijectors.Exp())
+            offset = vectorizer.encode(tf.expand_dims(offset, 0))[0]
+            # construct wavefunction
+            bosonic_dim = 2 * algebra.dim
+            fermionic_dim = 2 * algebra.dim
+            bosonic_wavefunc = NormalizingFlow([Normal()] * bosonic_dim, 0, tfp.bijectors.Sigmoid(), offset=offset)
+            fermionic_wavefunc = FermionicWavefunction(algebra, bosonic_dim, 2, num_fermions, rank, fermionic_dim, num_layers)
+            wavefunc = Wavefunction(algebra, vectorizer, bosonic_wavefunc, fermionic_wavefunc)
+            wavefunc.offset = m * tf.stack([-Sz, -Sy, -Sx])
+            bosonic = wavefunc.sample(batch_size)
+            log_norm, _ = wavefunc(bosonic)
+        # observables
+        radius = tf.sqrt(matrix_quadratic_potential(bosonic) / N)
+        gauge = matrix_SUN_adjoint_casimir(wavefunc, bosonic)
+        rotation = miniBMN_SO3_casimir(wavefunc, bosonic)
+        energy = miniBMN_energy(m, wavefunc, bosonic)
         # evaluation
         print("Evaluating ...")
         restore_path = "results/" + name + "/"
-        angles, ent = matrix_entanglement(scope, wavefunc, restore_path, num_samples=100000)
+        angles, ent = matrix_entanglement(scope, wavefunc, restore_path, num_samples=10000)
         print(list(ent))

@@ -10,7 +10,7 @@ I recommend Anaconda (https://www.anaconda.com/) for environment setup. Please i
   4. I recommend running the tests `python tests.py` to make sure that the environment is setup properly. All tests should pass (in ~1h) and you will see `OK` after the command finishes. 
   
 ## Demo
-Demonstration code is in `demo.py`; please feel free to check out the source code for usage. As an example, the command `python demo.py maf 2 1.0 -f 2` will search for the ground state of the `N = 2` and `nu = 1.0` mini-BMN with `-f 2` fermions, using Masked Autoregressive Flows.
+Demonstration code is in `demo.py`; please check out the source code for its arguments and usage. As an example, the command `python demo.py maf 2 1.0 -f 2` will search for the ground state of the `N = 2` and `nu = 1.0` mini-BMN with `-f 2` fermions, using Masked Autoregressive Flows.
 
 ## Structure of the repository
 * `algebra.py` is utility code for Lie groups and algebras
